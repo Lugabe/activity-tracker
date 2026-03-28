@@ -4,19 +4,15 @@ import os
 from datetime import datetime, timedelta
 import time
 
-# ============================================================
-# CONFIGURACAO DA PAGINA
-# ============================================================
+# Page config - NO sidebar
 st.set_page_config(
     page_title="Activity Tracker - UpFlux",
-    page_icon="https://upflux.io/wp-content/uploads/2023/03/favicon-upflux.png",
+    page_icon="*",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
-# ============================================================
-# DADOS DE ORGANIZACOES E PROCESSOS (Fonte: planilha SharePoint - aba In)
-# ============================================================
+# ORG_PROCESS_DATA - All 64 organizations exactly as specified
 ORG_PROCESS_DATA = {
     "Circulo Saude": ["Centro Cirurgico", "Ciclo de Receitas", "Desospitalizacao", "Pronto Atendimento", "Protocolo Sepse", "Protocolo TEV", "Protocolo AVC", "Protocolo DorT", "Giro de Leito", "Solicitacao de Leito"],
     "Ciser": ["O2C", "O2C Torre de Controle"],
@@ -84,17 +80,13 @@ ORG_PROCESS_DATA = {
     "VR Beneficio": ["Incidentes", "Requisicoes de servicos"],
 }
 
-# ============================================================
-# CAMINHOS DE DADOS
-# ============================================================
+# Data paths
 DATA_DIR = "data"
 ACTIVITIES_FILE = os.path.join(DATA_DIR, "activities.json")
 INTEGRATORS_FILE = os.path.join(DATA_DIR, "integrators.json")
 CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 
-# ============================================================
-# FUNCOES DE PERSISTENCIA
-# ============================================================
+# Persistence functions
 def ensure_data_dir():
     os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -142,66 +134,153 @@ def load_config():
 def save_config(config):
     save_json(CONFIG_FILE, config)
 
-# ============================================================
-# CSS CUSTOMIZADO - CORES UPFLUX
-# ============================================================
+# Helper functions
+def get_active_activities(activities):
+    return [a for a in activities if a.get("status") == "active"]
+
+def get_completed_activities(activities):
+    return [a for a in activities if a.get("status") == "completed"]
+
+def get_today_completed(activities):
+    today = datetime.now().strftime("%Y-%m-%d")
+    return [a for a in activities if a.get("status") == "completed" and a.get("fim", "")[:10] == today]
+
+def get_user_active(activities, user):
+    return [a for a in activities if a.get("status") == "active" and a.get("integrador") == user]
+
+def get_duration_minutes(start_str, end_str=None):
+    try:
+        start = datetime.fromisoformat(start_str)
+        end = datetime.fromisoformat(end_str) if end_str else datetime.now()
+        return (end - start).total_seconds() / 60
+    except:
+        return 0
+
+def format_duration(start_str):
+    minutes = get_duration_minutes(start_str)
+    hours = int(minutes // 60)
+    mins = int(minutes % 60)
+    secs = int((minutes * 60) % 60)
+    return f"{hours:02d}:{mins:02d}:{secs:02d}"
+
+def get_duration_class(start_str):
+    minutes = get_duration_minutes(start_str)
+    if minutes > 240:
+        return "danger"
+    elif minutes > 180:
+        return "warning"
+    return ""
+
+def get_initials(name):
+    parts = name.split()
+    if len(parts) >= 2:
+        return (parts[0][0] + parts[1][0]).upper()
+    return name[:2].upper()
+
+# CSS - Professional dark theme matching reference
 st.markdown("""
 <style>
-    /* Import Google Fonts */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
-    /* Global */
     .stApp {
         background-color: #0a0e1a;
         font-family: 'Inter', sans-serif;
     }
 
-    /* Sidebar styling */
-    section[data-testid="stSidebar"] {
-        background-color: #0f1424 !important;
-        border-right: 1px solid #1e2642;
-    }
-    section[data-testid="stSidebar"] .stRadio label {
-        color: #c8d1e0 !important;
-    }
-    section[data-testid="stSidebar"] .stSelectbox label {
-        color: #c8d1e0 !important;
-    }
+    /* Hide sidebar completely */
+    section[data-testid="stSidebar"] { display: none; }
+    button[data-testid="stSidebarCollapsedControl"] { display: none; }
 
-    /* Header area */
-    .app-header {
-        background: linear-gradient(135deg, #0f1424 0%, #151b30 50%, #0f1424 100%);
-        border: 1px solid #1e2642;
-        border-radius: 16px;
-        padding: 24px 32px;
-        margin-bottom: 24px;
+    /* Hide Streamlit branding */
+    #MainMenu { visibility: hidden; }
+    footer { visibility: hidden; }
+    header[data-testid="stHeader"] { background: transparent; }
+
+    /* Top header bar */
+    .top-header {
+        background: linear-gradient(135deg, #0f1424 0%, #151b30 100%);
+        border-bottom: 1px solid #1e2642;
+        padding: 16px 32px;
+        margin: -1rem -1rem 24px -1rem;
         display: flex;
         align-items: center;
-        gap: 20px;
+        justify-content: space-between;
     }
-    .app-header img {
-        height: 40px;
+    .logo-area {
+        display: flex;
+        align-items: center;
+        gap: 12px;
     }
-    .app-header .title {
+    .logo-icon {
+        width: 36px;
+        height: 36px;
+        background: linear-gradient(135deg, #00d4aa, #00b894);
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+    }
+    .logo-text {
         color: #ffffff;
-        font-size: 1.6rem;
+        font-size: 1.4rem;
         font-weight: 700;
         letter-spacing: -0.5px;
     }
-    .app-header .subtitle {
-        color: #7b88a0;
-        font-size: 0.9rem;
-        margin-top: 2px;
+    .logo-text span {
+        color: #00d4aa;
     }
 
-    /* Metric Cards - UpFlux Style */
+    /* Tabs styling - make them look like the reference nav */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0px;
+        background: linear-gradient(135deg, #0f1424 0%, #151b30 100%);
+        border: 1px solid #1e2642;
+        border-radius: 12px;
+        padding: 4px;
+        margin-bottom: 24px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        color: #7b88a0;
+        font-weight: 500;
+        font-size: 0.95rem;
+        padding: 10px 24px;
+        border-radius: 8px;
+        background: transparent;
+        border: none;
+    }
+    .stTabs [data-baseweb="tab"]:hover {
+        color: #ffffff;
+        background: rgba(0, 212, 170, 0.08);
+    }
+    .stTabs [aria-selected="true"] {
+        color: #00d4aa !important;
+        background: rgba(0, 212, 170, 0.12) !important;
+        font-weight: 600;
+    }
+    .stTabs [data-baseweb="tab-highlight"] {
+        background-color: #00d4aa;
+    }
+    .stTabs [data-baseweb="tab-border"] {
+        display: none;
+    }
+
+    /* Section cards */
+    .section-card {
+        background: linear-gradient(135deg, #111827 0%, #1a2235 100%);
+        border: 1px solid #1e2642;
+        border-radius: 16px;
+        padding: 24px;
+        margin-bottom: 20px;
+    }
+
+    /* Metric Cards */
     .metric-card {
         background: linear-gradient(135deg, #111827 0%, #1a2235 100%);
         border: 1px solid #1e2642;
         border-radius: 14px;
-        padding: 22px 20px;
+        padding: 20px;
         text-align: center;
-        margin-bottom: 12px;
         transition: transform 0.2s, box-shadow 0.2s;
     }
     .metric-card:hover {
@@ -210,36 +289,98 @@ st.markdown("""
     }
     .metric-card h3 {
         color: #7b88a0;
-        font-size: 0.78rem;
-        margin-bottom: 6px;
+        font-size: 0.72rem;
+        margin-bottom: 8px;
         text-transform: uppercase;
         letter-spacing: 1.2px;
         font-weight: 600;
     }
     .metric-card .value {
         color: #ffffff;
-        font-size: 2.2rem;
+        font-size: 2rem;
         font-weight: 800;
-        line-height: 1.1;
+        line-height: 1.2;
+    }
+    .metric-card .subtitle {
+        color: #5a6478;
+        font-size: 0.75rem;
+        margin-top: 4px;
     }
 
-    /* Activity card */
+    /* Activity card - rich design */
     .activity-card {
         background: linear-gradient(135deg, #111827 0%, #1a2235 100%);
+        border: 1px solid #1e2642;
         border-left: 4px solid #00d4aa;
-        border-radius: 10px;
-        padding: 16px 22px;
-        margin-bottom: 10px;
+        border-radius: 12px;
+        padding: 18px 22px;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
         transition: transform 0.15s;
     }
-    .activity-card:hover {
-        transform: translateX(3px);
+    .activity-card:hover { transform: translateX(3px); }
+    .activity-card.warning { border-left-color: #f59e0b; }
+    .activity-card.danger { border-left-color: #ef4444; }
+
+    .avatar {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 0.85rem;
+        color: #ffffff;
+        flex-shrink: 0;
     }
-    .activity-card.warning {
-        border-left-color: #f59e0b;
+    .avatar-green { background: linear-gradient(135deg, #00d4aa, #00b894); }
+    .avatar-blue { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+    .avatar-purple { background: linear-gradient(135deg, #8b5cf6, #7c3aed); }
+    .avatar-orange { background: linear-gradient(135deg, #f59e0b, #d97706); }
+
+    .activity-info { flex: 1; }
+    .activity-name {
+        color: #ffffff;
+        font-weight: 600;
+        font-size: 0.95rem;
     }
-    .activity-card.danger {
-        border-left-color: #ef4444;
+    .activity-detail {
+        color: #7b88a0;
+        font-size: 0.8rem;
+        margin-top: 2px;
+    }
+    .activity-timer {
+        font-family: 'JetBrains Mono', 'Courier New', monospace;
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #ffffff;
+        min-width: 100px;
+        text-align: center;
+    }
+    .status-badge {
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.72rem;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    .badge-active { background: rgba(0, 212, 170, 0.15); color: #00d4aa; }
+    .badge-warning { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+    .badge-danger { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+
+    /* Section title */
+    .section-title {
+        color: #ffffff;
+        font-size: 1.15rem;
+        font-weight: 700;
+        margin: 20px 0 16px 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
     }
 
     /* Ranking */
@@ -257,18 +398,22 @@ st.markdown("""
     .rank-2 { border-left: 4px solid #94a3b8; }
     .rank-3 { border-left: 4px solid #cd7f32; }
 
-    /* Section titles */
-    .section-title {
-        color: #ffffff;
-        font-size: 1.2rem;
-        font-weight: 700;
-        margin: 24px 0 16px 0;
-        display: flex;
-        align-items: center;
-        gap: 10px;
+    /* Constrain form elements width */
+    .stSelectbox, .stTextInput, .stNumberInput {
+        max-width: 100%;
     }
 
-    /* Footer - UpFlux */
+    /* Button styling */
+    .stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #00d4aa, #00b894) !important;
+        color: #0a0e1a !important;
+        font-weight: 700 !important;
+        border: none !important;
+        border-radius: 10px !important;
+        padding: 8px 24px !important;
+    }
+
+    /* Footer */
     .footer {
         text-align: center;
         padding: 24px;
@@ -276,229 +421,109 @@ st.markdown("""
         font-size: 0.78rem;
         margin-top: 48px;
         border-top: 1px solid #1e2642;
-        letter-spacing: 0.3px;
     }
-    .footer a {
-        color: #00d4aa;
-        text-decoration: none;
-    }
-
-    /* Status badge */
-    .status-active {
-        background-color: rgba(0, 212, 170, 0.12);
-        color: #00d4aa;
-        padding: 4px 14px;
-        border-radius: 20px;
-        font-size: 0.78rem;
-        font-weight: 600;
-    }
-    .status-completed {
-        background-color: rgba(74, 144, 217, 0.12);
-        color: #4a90d9;
-        padding: 4px 14px;
-        border-radius: 20px;
-        font-size: 0.78rem;
-        font-weight: 600;
-    }
-
-    /* Primary button override */
-    .stButton > button[kind="primary"] {
-        background: linear-gradient(135deg, #00d4aa 0%, #00b894 100%) !important;
-        color: #0a0e1a !important;
-        font-weight: 700 !important;
-        border: none !important;
-        border-radius: 10px !important;
-        padding: 12px 24px !important;
-        font-size: 1rem !important;
-        letter-spacing: 0.5px !important;
-    }
-    .stButton > button[kind="primary"]:hover {
-        background: linear-gradient(135deg, #00e6b8 0%, #00d4aa 100%) !important;
-        box-shadow: 0 4px 15px rgba(0, 212, 170, 0.3) !important;
-    }
-
-    /* Divider */
-    hr {
-        border-color: #1e2642 !important;
-    }
-
-    /* Selectbox styling */
-    .stSelectbox > div > div {
-        background-color: #111827 !important;
-        border-color: #1e2642 !important;
-    }
-
-    /* Text input */
-    .stTextInput > div > div > input {
-        background-color: #111827 !important;
-        border-color: #1e2642 !important;
-        color: #ffffff !important;
-    }
-
-    /* Tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        background-color: #111827;
-        border-radius: 8px;
-        color: #7b88a0;
-        padding: 8px 16px;
-    }
-    .stTabs [aria-selected="true"] {
-        background-color: #1a2235 !important;
-        color: #00d4aa !important;
-    }
-
-    /* Hide Streamlit branding */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
+    .footer a { color: #00d4aa; text-decoration: none; }
 </style>
 """, unsafe_allow_html=True)
 
 # ============================================================
-# SIDEBAR
+# TOP HEADER with logo and user selector
 # ============================================================
-with st.sidebar:
+header_col1, header_col2 = st.columns([4, 1])
+with header_col1:
     st.markdown("""
-    <div style="text-align: center; padding: 16px 0 8px 0;">
-        <img src="https://upflux.io/wp-content/uploads/2023/03/logo-upflux-white.png" width="150" alt="UpFlux Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-        <div style="display:none; color: #00d4aa; font-size: 1.5rem; font-weight: 800; letter-spacing: -1px;">UpFlux</div>
+    <div class="logo-area">
+        <div class="logo-icon">!</div>
+        <div class="logo-text"><span>Activity</span> Tracker</div>
     </div>
     """, unsafe_allow_html=True)
-    st.markdown("---")
-
+with header_col2:
     integrators = load_integrators()
     integrator_names = [i["nome"] for i in integrators]
-
-    if not integrator_names:
-        st.warning("Nenhum integrador cadastrado. Va em Configuracoes.")
-        selected_user = None
-    else:
-        selected_user = st.selectbox("Integrador", integrator_names, key="user_select")
-
-    st.markdown("---")
-
-    page = st.radio(
-        "Navegacao",
-        ["Dashboard", "Historico", "Ranking", "Configuracoes"],
-        key="nav"
-    )
+    selected_user = st.selectbox("Integrador", integrator_names, key="user_select", label_visibility="collapsed")
 
 # ============================================================
-# FUNCOES AUXILIARES
+# HORIZONTAL TABS for navigation
 # ============================================================
-def get_active_activities(activities):
-    return [a for a in activities if a.get("status") == "active"]
-
-def get_user_active(activities, user):
-    return [a for a in activities if a.get("status") == "active" and a.get("integrador") == user]
-
-def get_completed_activities(activities):
-    return [a for a in activities if a.get("status") == "completed"]
-
-def format_duration(start_str):
-    try:
-        start = datetime.fromisoformat(start_str)
-        delta = datetime.now() - start
-        hours = int(delta.total_seconds() // 3600)
-        minutes = int((delta.total_seconds() % 3600) // 60)
-        return f"{hours:02d}h {minutes:02d}m"
-    except:
-        return "00h 00m"
-
-def get_duration_minutes(start_str, end_str=None):
-    try:
-        start = datetime.fromisoformat(start_str)
-        end = datetime.fromisoformat(end_str) if end_str else datetime.now()
-        return (end - start).total_seconds() / 60
-    except:
-        return 0
-
-def get_duration_class(start_str):
-    minutes = get_duration_minutes(start_str)
-    if minutes > 240:
-        return "danger"
-    elif minutes > 180:
-        return "warning"
-    return ""
+tab_dashboard, tab_historico, tab_ranking, tab_config = st.tabs(["Dashboard", "Historico", "Ranking", "Configuracoes"])
 
 # ============================================================
-# PAGINA: DASHBOARD
+# TAB: DASHBOARD
 # ============================================================
-def page_dashboard():
-    # Header with logo
-    st.markdown("""
-    <div class="app-header">
-        <img src="https://upflux.io/wp-content/uploads/2023/03/logo-upflux-white.png" alt="UpFlux" onerror="this.outerHTML='<span style=\\'color:#00d4aa;font-size:1.8rem;font-weight:800;\\'>UpFlux</span>'">
-        <div>
-            <div class="title">Activity Tracker</div>
-            <div class="subtitle">Controle de atividades da equipe de integracao UpFlux</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
+with tab_dashboard:
     activities = load_activities()
     active = get_active_activities(activities)
-    completed_today = [
-        a for a in get_completed_activities(activities)
-        if a.get("fim", "")[:10] == datetime.now().strftime("%Y-%m-%d")
-    ]
+    today_completed = get_today_completed(activities)
+    config = load_config()
+    alerts = len([a for a in active if get_duration_minutes(a["inicio"]) > config["alert_threshold_minutes"]])
 
-    # Metricas
+    # Metric Cards Row
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.markdown(f"""
         <div class="metric-card">
-            <h3>Atividades Ativas</h3>
-            <div class="value">{len(active)}</div>
+            <h3>Atividades em Andamento</h3>
+            <div class="value" style="color: #00d4aa">{len(active)}</div>
+            <div class="subtitle">Integradores trabalhando agora</div>
         </div>
         """, unsafe_allow_html=True)
     with col2:
         st.markdown(f"""
         <div class="metric-card">
-            <h3>Concluidas Hoje</h3>
-            <div class="value">{len(completed_today)}</div>
+            <h3>Finalizadas Hoje</h3>
+            <div class="value">{len(today_completed)}</div>
+            <div class="subtitle">Concluidas no dia</div>
         </div>
         """, unsafe_allow_html=True)
     with col3:
-        alerts = len([a for a in active if get_duration_minutes(a["inicio"]) > 180])
+        avg_min = 0
+        if today_completed:
+            avg_min = sum(a.get("duracao_minutos", 0) for a in today_completed) / len(today_completed)
+        avg_h = int(avg_min // 60)
+        avg_m = int(avg_min % 60)
         st.markdown(f"""
         <div class="metric-card">
-            <h3>Alertas</h3>
-            <div class="value" style="color: {'#ef4444' if alerts > 0 else '#00d4aa'}">{alerts}</div>
+            <h3>Tempo Medio Hoje</h3>
+            <div class="value">{avg_h}h {avg_m:02d}m</div>
+            <div class="subtitle">Meta: abaixo de 2h</div>
         </div>
         """, unsafe_allow_html=True)
     with col4:
         st.markdown(f"""
         <div class="metric-card">
-            <h3>Integradores Online</h3>
-            <div class="value">{len(set(a['integrador'] for a in active))}</div>
+            <h3>Alertas Pendentes</h3>
+            <div class="value" style="color: {'#ef4444' if alerts > 0 else '#00d4aa'}">{alerts}</div>
+            <div class="subtitle">Atividades > 4h abertas</div>
         </div>
         """, unsafe_allow_html=True)
 
-    st.markdown("---")
+    st.markdown("<br>", unsafe_allow_html=True)
 
-    # Quick Start
+    # Quick Registration - constrained width
     if selected_user:
-        st.markdown('<div class="section-title">Iniciar Atividade</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Registro Rapido de Atividade</div>', unsafe_allow_html=True)
 
         user_active = get_user_active(activities, selected_user)
-
         if user_active:
             st.info(f"Voce ja tem {len(user_active)} atividade(s) ativa(s). Finalize antes de iniciar outra.")
 
-        col_org, col_proc, col_desc = st.columns([2, 2, 3])
+        # Use columns with spacers to constrain width - 3 selectors + 1 button in a row
+        col_org, col_proc, col_btn = st.columns([3, 3, 1])
         with col_org:
-            org = st.selectbox("Organizacao", sorted(ORG_PROCESS_DATA.keys()), key="org_select")
+            org = st.selectbox("Cliente (Organizacao)", sorted(ORG_PROCESS_DATA.keys()), key="org_select")
         with col_proc:
             processes = ORG_PROCESS_DATA.get(org, [])
             proc = st.selectbox("Processo", processes, key="proc_select")
-        with col_desc:
-            desc = st.text_input("Descricao (opcional)", placeholder="Ex: Analise de conformidade...", key="desc_input")
+        with col_btn:
+            st.markdown("<br>", unsafe_allow_html=True)
+            start_btn = st.button("Iniciar", use_container_width=True, type="primary")
 
-        if st.button("INICIAR", use_container_width=True, type="primary"):
+        # Description field - constrained to 2/3 width
+        col_desc, col_space = st.columns([5, 2])
+        with col_desc:
+            desc = st.text_input("Observacao (opcional)", placeholder="Ex: Ajustando modelo de referencia, corrigindo ETL...", key="desc_input")
+
+        if start_btn:
             if not user_active:
                 new_activity = {
                     "id": f"{selected_user}_{datetime.now().strftime('%Y%m%d%H%M%S')}",
@@ -518,67 +543,105 @@ def page_dashboard():
             else:
                 st.warning("Finalize a atividade atual antes de iniciar uma nova.")
 
-    st.markdown("---")
+    st.markdown("<br>", unsafe_allow_html=True)
 
-    # Atividades ativas
-    st.markdown('<div class="section-title">Atividades em Andamento</div>', unsafe_allow_html=True)
+    # Active activities and Timeline side by side
+    col_activities, col_timeline = st.columns([3, 2])
 
-    if not active:
-        st.info("Nenhuma atividade em andamento no momento.")
-    else:
-        for act in active:
-            duration_class = get_duration_class(act["inicio"])
-            duration = format_duration(act["inicio"])
-            minutes = get_duration_minutes(act["inicio"])
+    with col_activities:
+        st.markdown('<div class="section-title">Atividades em Andamento</div>', unsafe_allow_html=True)
 
-            alert_icon = ""
-            if minutes > 240:
-                alert_icon = "&#128308;"
-            elif minutes > 180:
-                alert_icon = "&#128993;"
-            else:
-                alert_icon = "&#128994;"
+        if not active:
+            st.info("Nenhuma atividade em andamento no momento.")
+        else:
+            avatar_colors = ["avatar-green", "avatar-blue", "avatar-purple", "avatar-orange"]
+            for idx, act in enumerate(active):
+                duration_class = get_duration_class(act["inicio"])
+                duration = format_duration(act["inicio"])
+                minutes = get_duration_minutes(act["inicio"])
+                initials = get_initials(act["integrador"])
+                avatar_class = avatar_colors[idx % len(avatar_colors)]
 
-            st.markdown(f"""
-            <div class="activity-card {duration_class}">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <strong style="color: #ffffff; font-size: 1.1rem;">{act['integrador']}</strong>
-                        <span style="color: #7b88a0; margin-left: 10px;">{act['organizacao']} - {act['processo']}</span>
+                if minutes > 240:
+                    badge_class = "badge-danger"
+                    badge_text = f"+ {int(minutes//60)}h"
+                elif minutes > 180:
+                    badge_class = "badge-warning"
+                    badge_text = "Atencao"
+                else:
+                    badge_class = "badge-active"
+                    badge_text = "Ativo"
+
+                st.markdown(f"""
+                <div class="activity-card {duration_class}">
+                    <div class="avatar {avatar_class}">{initials}</div>
+                    <div class="activity-info">
+                        <div class="activity-name">{act['integrador']}</div>
+                        <div class="activity-detail">{act['organizacao']} - {act['processo']}</div>
                     </div>
-                    <div style="text-align: right;">
-                        <span style="font-size: 1.3rem; font-weight: 700; color: #ffffff;">{alert_icon} {duration}</span>
-                    </div>
+                    <div class="activity-timer">{duration}</div>
+                    <span class="status-badge {badge_class}">{badge_text}</span>
                 </div>
-                {f'<div style="color: #5a6478; margin-top: 5px; font-size: 0.85rem;">{act.get("descricao", "")}</div>' if act.get("descricao") else ''}
-            </div>
-            """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
 
-            # Stop button per activity
-            if act.get("integrador") == selected_user:
-                if st.button(f"PARAR ATIVIDADE", key=f"stop_{act['id']}", use_container_width=True):
-                    for a in activities:
-                        if a["id"] == act["id"]:
-                            a["status"] = "completed"
-                            a["fim"] = datetime.now().isoformat()
-                            a["duracao_minutos"] = round(get_duration_minutes(a["inicio"], a["fim"]), 1)
-                            break
-                    save_activities(activities)
-                    st.success("Atividade finalizada!")
-                    st.rerun()
+                # Stop button only for current user
+                if act.get("integrador") == selected_user:
+                    if st.button(f"Parar", key=f"stop_{act['id']}"):
+                        for a in activities:
+                            if a["id"] == act["id"]:
+                                a["status"] = "completed"
+                                a["fim"] = datetime.now().isoformat()
+                                a["duracao_minutos"] = round(get_duration_minutes(a["inicio"], a["fim"]), 1)
+                                break
+                        save_activities(activities)
+                        st.success("Atividade finalizada!")
+                        st.rerun()
+
+    with col_timeline:
+        st.markdown('<div class="section-title">Timeline Recente</div>', unsafe_allow_html=True)
+
+        # Show recent completed activities as a timeline
+        all_completed = get_completed_activities(activities)
+        all_completed.sort(key=lambda x: x.get("fim", ""), reverse=True)
+        recent = all_completed[:8]
+
+        if not recent:
+            st.info("Nenhuma atividade finalizada ainda.")
+        else:
+            for act in recent:
+                fim_str = ""
+                if act.get("fim"):
+                    try:
+                        fim_dt = datetime.fromisoformat(act["fim"])
+                        fim_str = fim_dt.strftime("%H:%M")
+                    except:
+                        fim_str = ""
+                dur = act.get("duracao_minutos", 0)
+                dur_h = int(dur // 60)
+                dur_m = int(dur % 60)
+
+                st.markdown(f"""
+                <div style="border-left: 2px solid #1e2642; padding-left: 16px; margin-bottom: 16px; margin-left: 8px;">
+                    <div style="color: #5a6478; font-size: 0.75rem;">{fim_str}</div>
+                    <div style="color: #ffffff; font-size: 0.85rem; margin-top: 2px;">
+                        <strong>{act['integrador']}</strong> finalizou {act['processo']} em <strong>{act['organizacao']}</strong>
+                    </div>
+                    <div style="color: #7b88a0; font-size: 0.75rem;">Duracao: {dur_h}h {dur_m:02d}m</div>
+                </div>
+                """, unsafe_allow_html=True)
 
 # ============================================================
-# PAGINA: HISTORICO
+# TAB: HISTORICO
 # ============================================================
-def page_historico():
-    st.markdown('<div class="section-title" style="font-size: 1.5rem;">Historico de Atividades</div>', unsafe_allow_html=True)
+with tab_historico:
+    st.markdown('<div class="section-title" style="font-size: 1.3rem;">Historico de Atividades</div>', unsafe_allow_html=True)
 
     activities = load_activities()
     completed = get_completed_activities(activities)
     completed.sort(key=lambda x: x.get("fim", ""), reverse=True)
 
-    # Filtros
-    col1, col2, col3 = st.columns(3)
+    # Filters - constrained in a row
+    col1, col2, col3, col_space = st.columns([2, 2, 2, 1])
     with col1:
         integrators = load_integrators()
         filter_user = st.selectbox("Filtrar por integrador", ["Todos"] + [i["nome"] for i in integrators], key="hist_filter_user")
@@ -587,7 +650,7 @@ def page_historico():
     with col3:
         filter_period = st.selectbox("Periodo", ["Hoje", "Ultimos 7 dias", "Ultimos 30 dias", "Tudo"], key="hist_filter_period")
 
-    # Aplicar filtros
+    # Apply filters
     filtered = completed
     if filter_user != "Todos":
         filtered = [a for a in filtered if a.get("integrador") == filter_user]
@@ -611,7 +674,6 @@ def page_historico():
             dur = act.get("duracao_minutos", 0)
             hours = int(dur // 60)
             mins = int(dur % 60)
-
             fim_str = ""
             if act.get("fim"):
                 try:
@@ -622,15 +684,14 @@ def page_historico():
 
             st.markdown(f"""
             <div class="activity-card">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <strong style="color: #ffffff;">{act['integrador']}</strong>
-                        <span style="color: #7b88a0; margin-left: 10px;">{act['organizacao']} - {act['processo']}</span>
-                    </div>
-                    <div style="text-align: right;">
-                        <span style="color: #00d4aa; font-weight: 600;">{hours:02d}h {mins:02d}m</span>
-                        <div style="color: #5a6478; font-size: 0.75rem;">{fim_str}</div>
-                    </div>
+                <div class="avatar avatar-blue">{get_initials(act.get('integrador', 'XX'))}</div>
+                <div class="activity-info">
+                    <div class="activity-name">{act['integrador']}</div>
+                    <div class="activity-detail">{act['organizacao']} - {act['processo']}</div>
+                </div>
+                <div style="text-align: right;">
+                    <span style="color: #00d4aa; font-weight: 600;">{hours:02d}h {mins:02d}m</span>
+                    <div style="color: #5a6478; font-size: 0.75rem;">{fim_str}</div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -638,18 +699,20 @@ def page_historico():
         st.info("Nenhuma atividade encontrada com os filtros selecionados.")
 
 # ============================================================
-# PAGINA: RANKING
+# TAB: RANKING
 # ============================================================
-def page_ranking():
-    st.markdown('<div class="section-title" style="font-size: 1.5rem;">Ranking de Integradores</div>', unsafe_allow_html=True)
+with tab_ranking:
+    st.markdown('<div class="section-title" style="font-size: 1.3rem;">Ranking de Integradores</div>', unsafe_allow_html=True)
     st.markdown("*Pontuacao: (atividades x 10) + bonus por tempo medio abaixo de 2h*")
 
     activities = load_activities()
     completed = get_completed_activities(activities)
     integrators = load_integrators()
 
-    # Filtro de periodo
-    period = st.selectbox("Periodo", ["Ultimos 7 dias", "Ultimos 30 dias", "Todo o periodo"], key="rank_period")
+    # Period filter - constrained width
+    col_period, col_space1, col_space2 = st.columns([2, 3, 3])
+    with col_period:
+        period = st.selectbox("Periodo", ["Ultimos 7 dias", "Ultimos 30 dias", "Todo o periodo"], key="rank_period")
 
     now = datetime.now()
     if period == "Ultimos 7 dias":
@@ -659,35 +722,23 @@ def page_ranking():
         cutoff = (now - timedelta(days=30)).strftime("%Y-%m-%d")
         completed = [a for a in completed if a.get("fim", "")[:10] >= cutoff]
 
-    # Calcular pontuacao
     ranking = []
     for integ in integrators:
         nome = integ["nome"]
         user_acts = [a for a in completed if a.get("integrador") == nome]
         count = len(user_acts)
-
         if count > 0:
             avg_duration = sum(a.get("duracao_minutos", 0) for a in user_acts) / count
             base_score = count * 10
             bonus = 20 if avg_duration < 120 else 0
             total_score = base_score + bonus
-            ranking.append({
-                "nome": nome,
-                "atividades": count,
-                "media_minutos": avg_duration,
-                "pontuacao": total_score
-            })
+            ranking.append({"nome": nome, "atividades": count, "media_minutos": avg_duration, "pontuacao": total_score})
         else:
-            ranking.append({
-                "nome": nome,
-                "atividades": 0,
-                "media_minutos": 0,
-                "pontuacao": 0
-            })
+            ranking.append({"nome": nome, "atividades": 0, "media_minutos": 0, "pontuacao": 0})
 
     ranking.sort(key=lambda x: x["pontuacao"], reverse=True)
 
-    medals = ["&#129351;", "&#129352;", "&#129353;"]
+    medals = ["1", "2", "3"]
     for i, r in enumerate(ranking):
         medal = medals[i] if i < 3 else f"#{i+1}"
         rank_class = f"rank-{i+1}" if i < 3 else ""
@@ -711,18 +762,17 @@ def page_ranking():
         """, unsafe_allow_html=True)
 
 # ============================================================
-# PAGINA: CONFIGURACOES
+# TAB: CONFIGURACOES
 # ============================================================
-def page_config():
-    st.markdown('<div class="section-title" style="font-size: 1.5rem;">Configuracoes</div>', unsafe_allow_html=True)
+with tab_config:
+    st.markdown('<div class="section-title" style="font-size: 1.3rem;">Configuracoes</div>', unsafe_allow_html=True)
 
-    tab1, tab2, tab3 = st.tabs(["Integradores", "Alertas", "Integracoes"])
+    config_tab1, config_tab2, config_tab3 = st.tabs(["Integradores", "Alertas", "Integracoes"])
 
-    with tab1:
+    with config_tab1:
         st.markdown("### Gerenciar Integradores")
         integrators = load_integrators()
 
-        # Adicionar novo
         st.markdown("**Adicionar Integrador**")
         col1, col2, col3 = st.columns([2, 3, 1])
         with col1:
@@ -740,7 +790,6 @@ def page_config():
                 else:
                     st.warning("Preencha nome e email.")
 
-        # Lista atual
         st.markdown("**Integradores Cadastrados**")
         for i, integ in enumerate(integrators):
             col1, col2, col3 = st.columns([2, 3, 1])
@@ -754,79 +803,59 @@ def page_config():
                     save_integrators(integrators)
                     st.rerun()
 
-    with tab2:
+    with config_tab2:
         st.markdown("### Configuracao de Alertas")
         config = load_config()
 
-        config["alert_threshold_minutes"] = st.number_input(
-            "Alerta gentil (minutos)",
-            value=config["alert_threshold_minutes"],
-            min_value=30, max_value=600,
-            help="Lembrete gentil apos este tempo"
-        )
-        config["critical_threshold_minutes"] = st.number_input(
-            "Alerta critico (minutos)",
-            value=config["critical_threshold_minutes"],
-            min_value=60, max_value=720,
-            help="Alerta no canal do time apos este tempo"
-        )
-        config["jira_threshold_minutes"] = st.number_input(
-            "Criar ticket Jira (minutos)",
-            value=config["jira_threshold_minutes"],
-            min_value=120, max_value=1440,
-            help="Criacao automatica de ticket no Jira"
-        )
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            config["alert_threshold_minutes"] = st.number_input(
+                "Alerta gentil (minutos)", value=config["alert_threshold_minutes"],
+                min_value=30, max_value=600, help="Lembrete gentil apos este tempo"
+            )
+        with col2:
+            config["critical_threshold_minutes"] = st.number_input(
+                "Alerta critico (minutos)", value=config["critical_threshold_minutes"],
+                min_value=60, max_value=720, help="Alerta no canal do time apos este tempo"
+            )
+        with col3:
+            config["jira_threshold_minutes"] = st.number_input(
+                "Criar ticket Jira (minutos)", value=config["jira_threshold_minutes"],
+                min_value=120, max_value=1440, help="Criacao automatica de ticket no Jira"
+            )
 
         if st.button("Salvar Configuracoes de Alertas", key="save_alerts"):
             save_config(config)
             st.success("Configuracoes salvas!")
 
-    with tab3:
+    with config_tab3:
         st.markdown("### Integracoes")
         config = load_config()
 
-        st.markdown("**Microsoft Teams**")
-        config["teams_webhook_url"] = st.text_input(
-            "Webhook URL (Incoming Webhook)",
-            value=config.get("teams_webhook_url", ""),
-            type="password",
-            key="teams_webhook"
-        )
-
-        st.markdown("**Jira**")
-        config["jira_api_url"] = st.text_input(
-            "Jira API URL",
-            value=config.get("jira_api_url", ""),
-            placeholder="https://sua-empresa.atlassian.net",
-            key="jira_url"
-        )
-        config["jira_project_key"] = st.text_input(
-            "Project Key",
-            value=config.get("jira_project_key", "SU"),
-            key="jira_key"
-        )
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("**Microsoft Teams**")
+            config["teams_webhook_url"] = st.text_input(
+                "Webhook URL (Incoming Webhook)", value=config.get("teams_webhook_url", ""),
+                type="password", key="teams_webhook"
+            )
+        with col2:
+            st.markdown("**Jira**")
+            config["jira_api_url"] = st.text_input(
+                "Jira API URL", value=config.get("jira_api_url", ""),
+                placeholder="https://sua-empresa.atlassian.net", key="jira_url"
+            )
+            config["jira_project_key"] = st.text_input(
+                "Project Key", value=config.get("jira_project_key", "SU"), key="jira_key"
+            )
 
         if st.button("Salvar Integracoes", key="save_integrations"):
             save_config(config)
             st.success("Integracoes salvas!")
 
-# ============================================================
-# ROTEAMENTO
-# ============================================================
-if page == "Dashboard":
-    page_dashboard()
-elif page == "Historico":
-    page_historico()
-elif page == "Ranking":
-    page_ranking()
-elif page == "Configuracoes":
-    page_config()
-
-# ============================================================
-# FOOTER
-# ============================================================
+# Footer
 st.markdown("""
 <div class="footer">
-    Desenvolvido por Luis Gabriel Bernardi - <a href="https://upflux.io" target="_blank">UpFlux</a> Activity Tracker v1.0
+    Desenvolvido por Luis Gabriel Bernardi - <a href="https://upflux.io" target="_blank">UpFlux</a> Activity Tracker v2.0
 </div>
 """, unsafe_allow_html=True)
